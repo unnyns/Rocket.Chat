@@ -156,7 +156,8 @@ API.v1.addRoute(['dm.history', 'im.history'], { authRequired: true }, {
 
 		const inclusive = this.queryParams.inclusive || false;
 
-		let count = 20;
+		//change count from 20 to 0, it will get all of the record
+		let count = 0;
 		if (this.queryParams.count) {
 			count = parseInt(this.queryParams.count);
 		}
@@ -185,7 +186,29 @@ API.v1.addRoute(['dm.history', 'im.history'], { authRequired: true }, {
 			return API.v1.unauthorized();
 		}
 
-		return API.v1.success(result);
+		//Additional codes **************************
+		//Query for the message collection
+		const { sort, fields, query } = this.parseJsonQuery();
+
+		const ourQuery = Object.assign({}, query, { rid: findResult.room._id });
+		const messages = Messages.find(ourQuery, {
+			sort: sort || { ts: -1 },
+			skip: offset,
+			limit: count,
+			fields,
+		}).fetch();
+
+		//Use for loop to insert Read-receipts into each Messages' collection
+		Meteor.runAsUser(this.userId, () => {
+			for(i = 0; i < messages.length-1; i++) {
+				messageId = result.messages[i]._id;
+				result.messages[i].receipts =  Meteor.call('getReadReceipts', { messageId }) 	//insert Read-receipt in their message collection
+			}
+		});
+
+		return API.v1.success({
+			result,			//return the message that include their read-reciept
+		});
 	},
 });
 
